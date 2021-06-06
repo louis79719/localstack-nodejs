@@ -3,14 +3,11 @@ const express = require('express');
 const helmet = require('helmet');
 const bodyParser = require('body-parser');
 
-const credentials = {
-  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-  secretAccessKey: process.env.AWS_SECRET_KEY,
-};
 const awsHost = process.env.AWS_HOST || 'http://localhost:4566';
+const awsRegion = process.env.AWS_REGION || 'eu-central-1';
 const dynamo = new AWS.DynamoDB.DocumentClient({
   endpoint: awsHost,
-  credentials,
+  region: awsRegion,
 });
 
 const app = express();
@@ -25,35 +22,52 @@ app.use(helmet({
 }));
 app.use(bodyParser.json());
 
-app.get('/pages/:id', async (req, res) => {
-  const pageId = req.params.id
-  const { Item } = await dynamo.get({
-    TableName: 'pages',
-    Key: {
-      id: pageId,
-    },
-  }).promise();
+app.get('/pages/:id', async (req, res, next) => {
+  try {
+    const pageId = req.params.id
+    const { Item } = await dynamo.get({
+      TableName: 'pages',
+      Key: {
+        id: pageId,
+      },
+    }).promise();
 
-  res.send(JSON.stringify(Item));
+    if(Item) {
+      res.send(JSON.stringify(Item));
+    } else {
+      res.status(404).send();
+    }
+  } catch (err) {
+    next(err);
+  }
 });
 
-app.put('/pages/:id', async (req, res) => {
-  const pageId = req.params.id
-  const payload = req.body
-  const { Attributes } = await dynamo.put({
-    TableName: 'pages',
-    Item: {
-      id: pageId,
-      ...payload,
-    },
-    ReturnValues: 'ALL_OLD',
-  }).promise();
-
-  res.send(JSON.stringify(Attributes));
+app.put('/pages/:id', async (req, res, next) => {
+  try {
+    const pageId = req.params.id
+    const payload = req.body
+    const { Attributes } = await dynamo.put({
+      TableName: 'pages',
+      Item: {
+        id: pageId,
+        ...payload,
+      },
+      ReturnValues: 'ALL_OLD',
+    }).promise();
+    res.send(JSON.stringify(Attributes));
+  } catch (err) {
+    next(err);
+  }
 });
 
 app.use('/', (req, res) => {
   res.send('Fallback routes');
+});
+
+app.use((err, req, res, next) => {
+  if (err) {
+    res.status(500).send();
+  }
 });
 
 app.listen(port, () => {
